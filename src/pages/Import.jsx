@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { readFileAsText, parseBankCsv } from '../lib/bankCsv'
 import { fetchActiveRules, matchAgainstRules, matchAgainstVendors } from '../lib/categorize'
-import { formatKr } from '../lib/format'
+import { formatKr, formatDate } from '../lib/format'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
@@ -45,7 +45,7 @@ export default function Import() {
       const hash = await sha256(file)
       const { data: existingImport } = await supabase.from('bank_imports').select('id, imported_at').eq('file_hash', hash).maybeSingle()
       if (existingImport) {
-        const proceed = window.confirm(`Denne filen er allerede importert (${new Date(existingImport.imported_at).toLocaleDateString('nb-NO')}). Importere på nytt?`)
+        const proceed = window.confirm(`Denne filen er allerede importert (${formatDate(existingImport.imported_at)}). Importere på nytt?`)
         if (!proceed) { setBusy(false); return }
       }
       fileHashRef.current = hash
@@ -236,7 +236,7 @@ export default function Import() {
                   {rows.map((r) => (
                     <tr key={r._id} className="list-row" style={{ opacity: r.selected ? 1 : 0.4 }}>
                       <td data-label="Velg"><input type="checkbox" checked={r.selected} onChange={(e) => updateRow(r._id, 'selected', e.target.checked)} /></td>
-                      <td data-label="Dato" className="text-muted">{r.date}</td>
+                      <td data-label="Dato" className="text-muted">{formatDate(r.date)}</td>
                       <td className="list-primary">
                         {r.description}
                         {r.duplicate && <span className="badge badge-yellow" style={{ marginLeft: 6 }}>duplikat</span>}
