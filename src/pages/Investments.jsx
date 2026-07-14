@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
-import { formatKr } from '../lib/format'
+import { formatKr, formatDate } from '../lib/format'
 
 const TYPES = [
   { value: 'fond', label: 'Fond' },
@@ -13,10 +14,17 @@ const TYPES = [
 
 const emptyForm = { account_id: '', instrument_name: '', instrument_type: 'fond', quantity: '', avg_price: '', current_price: '' }
 
+function gainPct(h) {
+  const avg = Number(h.avg_price)
+  if (avg <= 0) return 0
+  return ((Number(h.current_price) - avg) / avg) * 100
+}
+
 export default function Investments() {
   const { household, user } = useAuth()
   const [accounts, setAccounts] = useState([])
   const [holdings, setHoldings] = useState([])
+  const [priceHistory, setPriceHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('alle')
   const [showForm, setShowForm] = useState(false)
@@ -33,6 +41,18 @@ export default function Investments() {
     ])
     setAccounts(accs || [])
     setHoldings(hlds || [])
+
+    const ids = (hlds || []).map((h) => h.id)
+    if (ids.length > 0) {
+      const { data: snaps } = await supabase
+        .from('holding_price_snapshots')
+        .select('holding_id, snapshot_date, price')
+        .in('holding_id', ids)
+        .order('snapshot_date', { ascending: true })
+      setPriceHistory(snaps || [])
+    } else {
+      setPriceHistory([])
+    }
     setLoading(false)
   }
 
@@ -72,9 +92,16 @@ export default function Investments() {
       current_price: Number(form.current_price) || 0,
     }
 
-    const { error } = editingId
-      ? await supabase.from('holdings').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingId)
-      : await supabase.from('holdings').insert({ ...payload, household_id: household.id, owner_id: user.id })
+    let holdingId = editingId
+    const { data: saved, error } = editingId
+      ? await supabase.from('holdings').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingId).select().single()
+      : await supabase.from('holdings').insert({ ...payload, household_id: household.id, owner_id: user.id }).select().single()
+
+    if (!error && saved) {
+      holdingId = saved.id
+      await supabase.from('holding_price_snapshots')
+        .upsert({ holding_id: holdingId, snapshot_date: new Date().toISOString().slice(0, 10), price: payload.current_price }, { onConflict: 'holding_id,snapshot_date' })
+    }
 
     setSaving(false)
     if (error) { setError(error.message); return }
@@ -92,7 +119,30 @@ export default function Investments() {
 
   const filtered = filter === 'alle' ? holdings : holdings.filter((h) => h.instrument_type === filter)
   const totalValue = filtered.reduce((sum, h) => sum + Number(h.quantity) * Number(h.current_price), 0)
-  const totalGain = filtered.reduce((sum, h) => sum + (Number(h.current_price) - Number(h.avg_price)) * Number(h.quantity), 0)
+  const totalCost = filtered.reduce((sum, h) => sum + Number(h.quantity) * Number(h.avg_price), 0)
+  const totalGain = totalValue - totalCost
+  const totalGainPct = totalCost > 0 ? (totalGain / totalCost) * 100 : 0
+
+  const { best, worst } = useMemo(() => {
+    const withGain = filtered.filter((h) => Number(h.avg_price) > 0)
+    if (withGain.length === 0) return { best: null, worst: null }
+    const sorted = [...withGain].sort((a, b) => gainPct(b) - gainPct(a))
+    return { best: sorted[0], worst: sorted[sorted.length - 1] }
+  }, [filtered])
+
+  const chartData = useMemo(() => {
+    if (priceHistory.length === 0 || holdings.length === 0) return []
+    const holdingIds = new Set(filtered.map((h) => h.id))
+    const qtyById = Object.fromEntries(holdings.map((h) => [h.id, Number(h.quantity)]))
+    const byDate = new Map()
+    for (const snap of priceHistory) {
+      if (!holdingIds.has(snap.holding_id)) continue
+      const qty = qtyById[snap.holding_id] || 0
+      const existing = byDate.get(snap.snapshot_date) || 0
+      byDate.set(snap.snapshot_date, existing + Number(snap.price) * qty)
+    }
+    return Array.from(byDate, ([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date))
+  }, [priceHistory, filtered, holdings])
 
   return (
     <div className="stack">
@@ -157,18 +207,65 @@ export default function Investments() {
       </div>
 
       {!loading && filtered.length > 0 && (
-        <div className="two-col" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-          <div className="card card-pad">
-            <div className="stat-label">Total verdi</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600 }}>{formatKr(totalValue)}</div>
-          </div>
-          <div className="card card-pad">
-            <div className="stat-label">Gevinst/tap</div>
-            <div className={totalGain >= 0 ? 'amount-positive' : 'amount-negative'} style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600 }}>
-              {totalGain >= 0 ? '+' : '−'}{formatKr(Math.abs(totalGain))}
+        <>
+          <div className="two-col" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+            <div className="card card-pad">
+              <div className="row" style={{ marginBottom: 'var(--space-2)' }}>
+                <span className="icon-chip icon-chip-blue">💼</span>
+                <span className="stat-label">Total verdi</span>
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 600 }}>{formatKr(totalValue)}</div>
             </div>
+            <div className="card card-pad">
+              <div className="row" style={{ marginBottom: 'var(--space-2)' }}>
+                <span className={`icon-chip ${totalGain >= 0 ? 'icon-chip-green' : 'icon-chip-red'}`}>{totalGain >= 0 ? '📈' : '📉'}</span>
+                <span className="stat-label">Gevinst/tap</span>
+              </div>
+              <div className={totalGain >= 0 ? 'amount-positive' : 'amount-negative'} style={{ fontSize: 20, fontWeight: 600 }}>
+                {totalGain >= 0 ? '+' : '−'}{formatKr(Math.abs(totalGain))} ({totalGain >= 0 ? '+' : '−'}{Math.abs(totalGainPct).toFixed(1)}%)
+              </div>
+            </div>
+            {best && (
+              <div className="card card-pad">
+                <div className="row" style={{ marginBottom: 'var(--space-2)' }}>
+                  <span className="icon-chip icon-chip-green">🏆</span>
+                  <span className="stat-label">Best utvikling</span>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{best.instrument_name}</div>
+                <div className="amount-positive" style={{ fontSize: 13 }}>{gainPct(best) >= 0 ? '+' : '−'}{Math.abs(gainPct(best)).toFixed(1)}%</div>
+              </div>
+            )}
+            {worst && worst !== best && (
+              <div className="card card-pad">
+                <div className="row" style={{ marginBottom: 'var(--space-2)' }}>
+                  <span className="icon-chip icon-chip-red">🔻</span>
+                  <span className="stat-label">Svakest utvikling</span>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{worst.instrument_name}</div>
+                <div className={gainPct(worst) >= 0 ? 'amount-positive' : 'amount-negative'} style={{ fontSize: 13 }}>{gainPct(worst) >= 0 ? '+' : '−'}{Math.abs(gainPct(worst)).toFixed(1)}%</div>
+              </div>
+            )}
           </div>
-        </div>
+
+          {chartData.length >= 2 && (
+            <div className="card card-pad" style={{ height: 260 }}>
+              <div className="section-title">Verdiutvikling</div>
+              <ResponsiveContainer width="100%" height="85%">
+                <LineChart data={chartData} margin={{ left: 0, right: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} tickFormatter={formatDate} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--muted)" fontSize={11} tickFormatter={(v) => `${Math.round(v / 1000)}k`} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    formatter={(v) => formatKr(v)}
+                    labelFormatter={formatDate}
+                    contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
+                  />
+                  <Line type="monotone" dataKey="value" name="Verdi" stroke="#3987e5" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
       )}
 
       <div className="card">

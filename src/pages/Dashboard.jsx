@@ -116,10 +116,10 @@ export default function Dashboard() {
   const savingsRate = thisMonth.inntekt > 0 ? Math.round(((thisMonth.inntekt - thisMonth.utgift) / thisMonth.inntekt) * 100) : 0
 
   const statCards = [
-    { label: 'Netto formue', value: formatKr(netWorth) },
-    { label: `Inntekt i ${now.toLocaleDateString('nb-NO', { month: 'long' })}`, value: formatKr(thisMonth.inntekt), tone: 'positive' },
-    { label: `Utgifter i ${now.toLocaleDateString('nb-NO', { month: 'long' })}`, value: formatKr(thisMonth.utgift), tone: 'negative' },
-    { label: 'Sparerate', value: `${savingsRate}%`, tone: savingsRate >= 0 ? 'positive' : 'negative' },
+    { label: 'Netto formue', value: formatKr(netWorth), icon: '💰', chip: 'icon-chip-blue' },
+    { label: `Inntekt i ${now.toLocaleDateString('nb-NO', { month: 'long' })}`, value: formatKr(thisMonth.inntekt), tone: 'positive', icon: '📈', chip: 'icon-chip-green' },
+    { label: `Utgifter i ${now.toLocaleDateString('nb-NO', { month: 'long' })}`, value: formatKr(thisMonth.utgift), tone: 'negative', icon: '📉', chip: 'icon-chip-red' },
+    { label: 'Sparerate', value: `${savingsRate}%`, tone: savingsRate >= 0 ? 'positive' : 'negative', icon: '🏦', chip: 'icon-chip-yellow' },
   ]
 
   return (
@@ -138,10 +138,13 @@ export default function Dashboard() {
       <div className="two-col" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
         {statCards.map((s) => (
           <div key={s.label} className="card card-pad">
-            <div className="stat-label">{s.label}</div>
+            <div className="row" style={{ marginBottom: 4 }}>
+              <span className={`icon-chip ${s.chip}`}>{s.icon}</span>
+              <span className="stat-label">{s.label}</span>
+            </div>
             <div
               className={s.tone === 'positive' ? 'amount-positive' : s.tone === 'negative' ? 'amount-negative' : ''}
-              style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, marginTop: 4 }}
+              style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}
             >
               {s.value}
             </div>
