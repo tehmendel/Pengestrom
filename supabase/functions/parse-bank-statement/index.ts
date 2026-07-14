@@ -29,7 +29,10 @@ ${categoryList}
 Returner KUN et JSON-objekt, ingen annen tekst:
 {"transactions": [{"date": "YYYY-MM-DD", "description": "...", "amount": 123.45, "type": "utgift eller inntekt", "category_name": "eksakt kategorinavn eller null"}]}
 
-Regler: "amount" alltid positivt. "type" er "utgift" hvis penger forlater kontoen/kortet, "inntekt" hvis penger kommer inn. Ta med ALLE transaksjoner.`
+Regler: "amount" alltid positivt. "type" er "utgift" hvis penger forlater kontoen/kortet, "inntekt" hvis penger kommer inn.
+Ta med ALLE transaksjoner. Gjør alltid et godt forsøk på "category_name" ut fra butikk-/leverandørnavn og vanlige norske
+forbruksmønstre, selv om du er usikker — bruk kun null i sjeldne unntakstilfeller der beskrivelsen er for generisk til at
+noen kategori er rimelig å anta.`
 
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
     const anthropic = new Anthropic({ apiKey })
@@ -59,8 +62,10 @@ Regler: "amount" alltid positivt. "type" er "utgift" hvis penger forlater kontoe
     if (!match) throw new Error('AI returnerte ikke strukturert JSON — prøv CSV-eksport i stedet')
 
     const parsed = JSON.parse(match[0]) as { transactions: { date: string; description: string; amount: number; type: string; category_name: string | null }[] }
+    const normalize = (s: string) => s.toLowerCase().trim()
     const transactions = parsed.transactions.map((t) => {
-      const category = categories.find((c) => c.name === t.category_name && c.type === t.type)
+      const wanted = t.category_name ? normalize(t.category_name) : null
+      const category = wanted ? categories.find((c) => normalize(c.name) === wanted && c.type === t.type) : undefined
       return { ...t, category_id: category?.id ?? null }
     })
 

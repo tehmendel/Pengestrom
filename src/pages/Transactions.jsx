@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { formatKr, formatDate } from '../lib/format'
-import { recordCorrection } from '../lib/categorize'
+import { learnFromOutcome } from '../lib/categorize'
 
 export default function Transactions() {
   const { household } = useAuth()
@@ -31,12 +31,11 @@ export default function Transactions() {
   async function changeCategory(tx, newCategoryId) {
     const previousCategoryId = tx.category_id
     await supabase.from('transactions').update({ category_id: newCategoryId || null }).eq('id', tx.id)
-    await recordCorrection({
+    await learnFromOutcome({
       householdId: household.id,
       description: tx.description,
       suggestedCategoryId: previousCategoryId,
-      actualCategoryId: newCategoryId || null,
-      wasCorrect: previousCategoryId === newCategoryId,
+      finalCategoryId: newCategoryId || null,
     })
     load()
   }

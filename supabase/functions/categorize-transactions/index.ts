@@ -33,8 +33,13 @@ ${categoryList}
 Transaksjoner:
 ${lines}
 
+Gjør alltid et godt forsøk på å velge den kategorien som passer best, selv om du er usikker —
+bruk det du vet om butikk-/leverandørnavn, beløpstype og vanlige norske forbruksmønstre til å
+gjette fornuftig. Bruk KUN null i sjeldne unntakstilfeller der beskrivelsen er så generisk
+(f.eks. bare et referansenummer) at ingen kategori er rimelig å anta.
+
 Returner KUN et JSON-array, ingen annen tekst:
-[{"id": 0, "category_name": "eksakt kategorinavn fra listen, eller null hvis usikker"}]`
+[{"id": 0, "category_name": "eksakt kategorinavn fra listen, eller null i unntakstilfeller"}]`
 
     const anthropic = new Anthropic({ apiKey })
     const response = await anthropic.messages.create({
@@ -48,8 +53,10 @@ Returner KUN et JSON-array, ingen annen tekst:
     if (!match) throw new Error('AI returnerte ikke gyldig JSON')
 
     const parsed = JSON.parse(match[0]) as { id: number; category_name: string | null }[]
+    const normalize = (s: string) => s.toLowerCase().trim()
     const suggestions = parsed.map((item) => {
-      const category = categories.find((c) => c.name === item.category_name)
+      const wanted = item.category_name ? normalize(item.category_name) : null
+      const category = wanted ? categories.find((c) => normalize(c.name) === wanted) : undefined
       return { id: item.id, category_id: category?.id ?? null }
     })
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { readFileAsText, parseBankCsv } from '../lib/bankCsv'
-import { fetchActiveRules, matchAgainstRules, matchAgainstVendors } from '../lib/categorize'
+import { fetchActiveRules, matchAgainstRules, matchAgainstVendors, learnFromOutcome } from '../lib/categorize'
 import { formatKr, formatDate } from '../lib/format'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -26,6 +26,7 @@ export default function Import() {
   const [done, setDone] = useState(0)
   const fileHashRef = useRef(null)
   const fileNameRef = useRef(null)
+  const sourceRef = useRef('csv')
   const inputRef = useRef()
 
   useEffect(() => {
@@ -52,9 +53,12 @@ export default function Import() {
       fileNameRef.current = file.name
 
       const isPdf = file.name.toLowerCase().endsWith('.pdf')
+      sourceRef.current = isPdf ? 'pdf' : 'csv'
       let transactions = []
       let aiPresuggested = new Map()
 
+      // Uttrekk (format-spesifikk): CSV parses lokalt, PDF tolkes av AI.
+      // Kategorisering (identisk for begge, se under): regel → leverandør → AI.
       if (isPdf) {
         setStatus('Sender til AI for tolkning (kan ta et minutt)…')
         const { data: { session } } = await supabase.auth.getSession()
@@ -91,9 +95,11 @@ export default function Import() {
         withLocalMatch.push({ ...tx, _id: i, selected: true, category_id: ruleHit?.categoryId || vendorHit?.categoryId || aiPresuggested.get(i) || null })
       }
 
+      // Samme AI-kategorisering for alt som ennå mangler kategori, uansett om
+      // det kom fra CSV eller PDF — ingen forskjell i funksjonalitet mellom kildene.
       const unmatched = withLocalMatch.filter((t) => !t.category_id)
-      if (!isPdf && unmatched.length > 0) {
-        setStatus(`${withLocalMatch.length - unmatched.length} kategorisert av regler — spør AI om ${unmatched.length}…`)
+      if (unmatched.length > 0) {
+        setStatus(`${withLocalMatch.length - unmatched.length} kategorisert av regler/leverandørhistorikk — spør AI om ${unmatched.length}…`)
         try {
           const { data: { session } } = await supabase.auth.getSession()
           const res = await fetch(`${SUPABASE_URL}/functions/v1/categorize-transactions`, {
@@ -115,6 +121,10 @@ export default function Import() {
           // AI-kategorisering feilet — fortsetter med det regelbasert matching fant
         }
       }
+
+      // Startforslaget lagres uforanderlig per rad — brukes til å måle om
+      // brukeren bekreftet eller overstyrte forslaget når importen godkjennes.
+      for (const row of withLocalMatch) row.initial_category_id = row.category_id
 
       setStatus('Sjekker duplikater…')
       const dates = withLocalMatch.map((t) => t.date).sort()
@@ -167,13 +177,23 @@ export default function Import() {
       amount: r.amount,
       type: r.type,
       category_id: r.category_id || null,
-      source: 'csv',
+      source: sourceRef.current,
       bank_import_id: importRow?.id || null,
     }))
 
     const { error } = await supabase.from('transactions').insert(payload)
+    if (error) { setImporting(false); setError(error.message); return }
+
+    // Lær av hver rad: bekreftet forslag styrker leverandør-treffsikkerheten,
+    // overstyrt forslag retter den — enten det kom fra regel, leverandørhistorikk eller AI.
+    await Promise.all(selected.map((r) => learnFromOutcome({
+      householdId: household.id,
+      description: r.description,
+      suggestedCategoryId: r.initial_category_id || null,
+      finalCategoryId: r.category_id || null,
+    })))
+
     setImporting(false)
-    if (error) { setError(error.message); return }
     setDone(selected.length)
     setRows([])
     if (inputRef.current) inputRef.current.value = ''
@@ -208,7 +228,7 @@ export default function Import() {
           <span style={{ fontSize: 14, fontWeight: 600 }}>📄 Velg fil å importere</span>
         </label>
         <div className="text-muted" style={{ fontSize: 12 }}>
-          CSV eksportert fra nettbanken (raskest, tolkes lokalt) eller PDF-kontoutskrift (tolkes av AI — brukes for kilder uten CSV-eksport, f.eks. SAS Mastercard/Nordnet).
+          CSV eksportert fra nettbanken (raskest, tolkes lokalt) eller PDF-kontoutskrift (tolkes av AI — brukes for kilder uten CSV-eksport, f.eks. SAS Mastercard/Nordnet). Begge kategoriseres på nøyaktig samme måte.
         </div>
       </div>
 
