@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import CategoryPicker from '../components/CategoryPicker'
+import RecategorizeModal from '../components/RecategorizeModal'
 
 const MATCH_TYPES = [
   { value: 'contains', label: 'Inneholder' },
@@ -20,6 +21,7 @@ export default function Categories() {
   const [editingRuleId, setEditingRuleId] = useState(null)
   const [ruleEdit, setRuleEdit] = useState({ match_value: '', match_type: 'contains', category_id: '' })
   const [error, setError] = useState('')
+  const [recategorize, setRecategorize] = useState(null) // { category, transactions }
 
   async function load() {
     const [{ data: cats }, { data: rls }] = await Promise.all([
@@ -61,11 +63,33 @@ export default function Categories() {
     load()
   }
 
-  async function removeCategory(id) {
-    if (!window.confirm('Fjerne kategorien? Regler som bruker den fjernes også, og transaksjoner mister kategorien sin.')) return
-    const { error } = await supabase.from('categories').delete().eq('id', id)
-    if (error) { setError(error.message); return }
-    load()
+  async function removeCategory(category) {
+    setError('')
+    const { count } = await supabase
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('category_id', category.id)
+
+    if (!count) {
+      if (!window.confirm(`Fjerne kategorien «${category.name}»? Regler som bruker den fjernes også.`)) return
+      const { error } = await supabase.from('categories').delete().eq('id', category.id)
+      if (error) { setError(error.message); return }
+      load()
+      return
+    }
+
+    const otherSameType = categories.filter((c) => c.id !== category.id && c.type === category.type)
+    if (otherSameType.length === 0) {
+      setError(`${count} transaksjoner bruker «${category.name}» — opprett en annen ${category.type}-kategori å flytte dem til før du kan fjerne denne.`)
+      return
+    }
+
+    const { data: txs } = await supabase
+      .from('transactions')
+      .select('id, date, description, amount, type')
+      .eq('category_id', category.id)
+      .order('date', { ascending: false })
+    setRecategorize({ category, transactions: txs || [] })
   }
 
   async function addRule(e) {
@@ -134,7 +158,7 @@ export default function Categories() {
                     <div className="row">
                       <span className={`badge ${c.type === 'inntekt' ? 'badge-green' : 'badge-neutral'}`}>{c.type}</span>
                       <button className="btn btn-ghost btn-sm" onClick={() => startEditCategory(c)}>Rediger</button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => removeCategory(c.id)}>Fjern</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => removeCategory(c)}>Fjern</button>
                     </div>
                   </div>
                 )}
@@ -206,6 +230,16 @@ export default function Categories() {
           </form>
         </div>
       </div>
+
+      {recategorize && (
+        <RecategorizeModal
+          category={recategorize.category}
+          transactions={recategorize.transactions}
+          categories={categories}
+          onCancel={() => setRecategorize(null)}
+          onDone={() => { setRecategorize(null); load() }}
+        />
+      )}
     </div>
   )
 }
