@@ -180,6 +180,10 @@ export default function Import() {
     setRows((prev) => prev.map((r) => (r._id === id ? { ...r, [field]: value } : r)))
   }
 
+  function toggleAll(checked) {
+    setRows((prev) => prev.map((r) => ({ ...r, selected: checked })))
+  }
+
   async function commitImport() {
     setImporting(true)
     const selected = rows.filter((r) => r.selected)
@@ -223,6 +227,9 @@ export default function Import() {
     setRows([])
     if (inputRef.current) inputRef.current.value = ''
   }
+
+  const selectedCount = rows.filter((r) => r.selected).length
+  const allSelected = rows.length > 0 && selectedCount === rows.length
 
   return (
     <div className="stack">
@@ -271,7 +278,15 @@ export default function Import() {
               <table className="list-table">
                 <thead>
                   <tr>
-                    <th />
+                    <th>
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => { if (el) el.indeterminate = selectedCount > 0 && !allSelected }}
+                        onChange={(e) => toggleAll(e.target.checked)}
+                        title={allSelected ? 'Velg ingen' : 'Velg alle'}
+                      />
+                    </th>
                     <th>Dato</th>
                     <th>Beskrivelse</th>
                     <th className="text-right">Beløp</th>
@@ -311,8 +326,8 @@ export default function Import() {
               </table>
             </div>
           </div>
-          <button className="btn btn-primary btn-block" disabled={importing || rows.filter((r) => r.selected).length === 0} onClick={commitImport}>
-            {importing ? 'Importerer…' : `Importer ${rows.filter((r) => r.selected).length} transaksjoner`}
+          <button className="btn btn-primary btn-block" disabled={importing || selectedCount === 0} onClick={commitImport}>
+            {importing ? 'Importerer…' : `Importer ${selectedCount} transaksjoner`}
           </button>
         </>
       )}
