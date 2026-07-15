@@ -32,6 +32,7 @@ export default function Import() {
   const [aiWarning, setAiWarning] = useState('')
   const [importing, setImporting] = useState(false)
   const [done, setDone] = useState(0)
+  const [dragging, setDragging] = useState(false)
   const fileHashRef = useRef(null)
   const fileNameRef = useRef(null)
   const sourceRef = useRef('csv')
@@ -184,6 +185,24 @@ export default function Import() {
     setRows((prev) => prev.map((r) => ({ ...r, selected: checked })))
   }
 
+  function handleDragOver(e) {
+    e.preventDefault()
+    if (!busy) setDragging(true)
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault()
+    setDragging(false)
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragging(false)
+    if (busy) return
+    const file = e.dataTransfer.files?.[0]
+    if (file) handleFile(file)
+  }
+
   async function commitImport() {
     setImporting(true)
     const selected = rows.filter((r) => r.selected)
@@ -246,18 +265,23 @@ export default function Import() {
 
         <label
           className="row"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           style={{
-            border: '1.5px dashed var(--border-strong)',
+            border: `1.5px dashed ${dragging ? 'var(--accent)' : 'var(--border-strong)'}`,
             borderRadius: 'var(--radius-md)',
             padding: 'var(--space-4)',
             justifyContent: 'center',
             cursor: busy ? 'not-allowed' : 'pointer',
             opacity: busy ? 0.6 : 1,
+            background: dragging ? 'var(--accent-soft)' : 'transparent',
+            transition: 'background 0.1s ease, border-color 0.1s ease',
           }}
         >
           <input ref={inputRef} type="file" accept=".csv,.txt,.pdf" disabled={busy} style={{ display: 'none' }}
             onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
-          <span style={{ fontSize: 14, fontWeight: 600 }}>📄 Velg fil å importere</span>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>📄 {dragging ? 'Slipp filen her' : 'Velg fil eller slipp den her'}</span>
         </label>
         <div className="text-muted" style={{ fontSize: 12 }}>
           CSV eksportert fra nettbanken (raskest, tolkes lokalt) eller PDF-kontoutskrift (tolkes av AI — brukes for kilder uten CSV-eksport, f.eks. SAS Mastercard/Nordnet). Begge kategoriseres på nøyaktig samme måte.
