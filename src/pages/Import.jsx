@@ -30,7 +30,11 @@ export default function Import() {
   const inputRef = useRef()
 
   useEffect(() => {
-    supabase.from('accounts').select('*').eq('connection_type', 'manual').then(({ data }) => setAccounts(data || []))
+    supabase.from('accounts').select('*').eq('connection_type', 'manual').then(({ data }) => {
+      setAccounts(data || [])
+      const defaultAccount = (data || []).find((a) => a.is_default && a.owner_id === user?.id)
+      if (defaultAccount) setAccountId(defaultAccount.id)
+    })
     supabase.from('categories').select('*').then(({ data }) => setCategories(data || []))
   }, [household?.id])
 
@@ -208,7 +212,7 @@ export default function Import() {
           <label className="form-label">Konto</label>
           <select className="form-select" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <option value="">Velg konto…</option>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name} ({a.institution})</option>)}
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.display_name} ({a.institution}){a.is_default ? ' — standard' : ''}</option>)}
           </select>
         </div>
 

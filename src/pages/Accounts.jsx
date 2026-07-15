@@ -259,6 +259,17 @@ export default function Accounts() {
     load()
   }
 
+  async function setDefault(account) {
+    setError('')
+    // Unset any previous default first — a partial unique index only allows
+    // one is_default=true row per eier, so order matters to avoid a conflict.
+    const { error: unsetError } = await supabase.from('accounts').update({ is_default: false }).eq('owner_id', user.id).eq('is_default', true)
+    if (unsetError) { setError(unsetError.message); return }
+    const { error } = await supabase.from('accounts').update({ is_default: true }).eq('id', account.id)
+    if (error) { setError(error.message); return }
+    load()
+  }
+
   async function removeAccount(account) {
     setError('')
     const [{ count: txCount }, { count: holdingCount }] = await Promise.all([
@@ -401,7 +412,10 @@ export default function Accounts() {
               <tbody>
                 {sorted.map((a) => (
                   <tr key={a.id} className="list-row">
-                    <td className="list-primary">{a.display_name}</td>
+                    <td className="list-primary">
+                      {a.display_name}
+                      {a.is_default && <span className="badge badge-accent" style={{ marginLeft: 6 }}>★ Standard</span>}
+                    </td>
                     <td data-label="Bank" className="text-secondary">{a.institution}</td>
                     <td data-label="Type" className="text-secondary">{ACCOUNT_TYPES.find((t) => t.value === a.account_type)?.label || a.account_type}</td>
                     <td data-label="Saldo" className="text-right">
@@ -424,6 +438,9 @@ export default function Accounts() {
                     </td>
                     <td data-label="">
                       <div className="row">
+                        {a.owner_id === user.id && !a.is_default && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => setDefault(a)}>Sett som standard</button>
+                        )}
                         <button className="btn btn-ghost btn-sm" onClick={() => startEdit(a)}>Rediger</button>
                         <button className="btn btn-ghost btn-sm" onClick={() => removeAccount(a)}>Slett</button>
                       </div>
