@@ -89,7 +89,10 @@ a {
 
 .page {
   padding: var(--space-4);
-  max-width: 880px;
+  /* Grows with the window above ~1075px instead of staying pinned to a
+     fixed width, so wide desktop monitors aren't left with dead space —
+     stays at the 880px floor on anything narrower (tablet/mobile). */
+  max-width: clamp(880px, 82vw, 1680px);
   margin: 0 auto;
   width: 100%;
 }
