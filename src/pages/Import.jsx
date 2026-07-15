@@ -20,6 +20,46 @@ async function sha256(file) {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+// Shows what the parser actually extracted for one row — the raw CSV line
+// (or the raw AI-extracted JSON for a PDF import) alongside the parsed
+// fields, so a surprising category/amount can be traced back to its source.
+function RowDetailModal({ row, categoryName, onClose }) {
+  const fields = [
+    { label: 'Dato', value: formatDate(row.date) },
+    { label: 'Beskrivelse', value: row.description },
+    { label: 'Beløp', value: `${row.type === 'utgift' ? '−' : '+'}${formatKr(row.amount)}` },
+    { label: 'Type', value: row.type === 'inntekt' ? 'Inntekt' : 'Utgift' },
+    { label: 'Notater (parset)', value: row.notes || '—' },
+    { label: 'Kategoriforslag', value: categoryName || '—' },
+    { label: 'Kilde', value: SOURCE_LABELS[row.source]?.label || '—' },
+  ]
+  return (
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 480 }}>
+        <div className="modal-title">Parsede data for raden</div>
+        <div className="stack" style={{ gap: 0, marginBottom: 'var(--space-4)' }}>
+          {fields.map((f) => (
+            <div key={f.label} className="row-between" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', gap: 'var(--space-3)' }}>
+              <span className="text-muted" style={{ fontSize: 12, flexShrink: 0 }}>{f.label}</span>
+              <span style={{ fontSize: 13, textAlign: 'right', wordBreak: 'break-word' }}>{f.value}</span>
+            </div>
+          ))}
+        </div>
+        <div className="form-label">Rådata fra filen</div>
+        <pre style={{
+          background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          padding: 'var(--space-3)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 220, overflowY: 'auto',
+        }}>
+          {row.raw || 'Ingen rådata tilgjengelig for denne raden.'}
+        </pre>
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
+          <button className="btn btn-ghost" onClick={onClose}>Lukk</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Import() {
   const { household, user } = useAuth()
   const [accounts, setAccounts] = useState([])
@@ -33,6 +73,7 @@ export default function Import() {
   const [importing, setImporting] = useState(false)
   const [done, setDone] = useState(0)
   const [dragging, setDragging] = useState(false)
+  const [detailRow, setDetailRow] = useState(null)
   const fileHashRef = useRef(null)
   const fileNameRef = useRef(null)
   const sourceRef = useRef('csv')
@@ -88,7 +129,7 @@ export default function Import() {
           throw new Error(body.error || `Serverfeil (${res.status})`)
         }
         const parsed = await res.json()
-        transactions = parsed.transactions.map((t) => ({ date: t.date, description: t.description, notes: '', amount: t.amount, type: t.type }))
+        transactions = parsed.transactions.map((t) => ({ date: t.date, description: t.description, notes: '', amount: t.amount, type: t.type, raw: JSON.stringify(t, null, 2) }))
         aiPresuggested = new Map(parsed.transactions.map((t, i) => [i, t.category_id]))
       } else {
         const text = await readFileAsText(file)
@@ -227,6 +268,7 @@ export default function Import() {
       category_id: r.category_id || null,
       source: sourceRef.current,
       bank_import_id: importRow?.id || null,
+      raw_source: r.raw || null,
     }))
 
     const { error } = await supabase.from('transactions').insert(payload)
@@ -252,6 +294,13 @@ export default function Import() {
 
   return (
     <div className="stack">
+      {detailRow && (
+        <RowDetailModal
+          row={detailRow}
+          categoryName={categories.find((c) => c.id === detailRow.category_id)?.name}
+          onClose={() => setDetailRow(null)}
+        />
+      )}
       <div className="page-title">Importer kontoutskrift</div>
 
       <div className="card card-pad stack">
@@ -331,7 +380,7 @@ export default function Import() {
                         <span className={r.type === 'inntekt' ? 'amount-positive' : 'amount-negative'}>{r.type === 'utgift' ? '−' : '+'}{formatKr(r.amount)}</span>
                       </td>
                       <td data-label="Kategori">
-                        <select className="form-select" value={r.category_id || ''} onChange={(e) => {
+                        <select className="form-select-sm" value={r.category_id || ''} onChange={(e) => {
                           updateRow(r._id, 'category_id', e.target.value || null)
                           updateRow(r._id, 'source', e.target.value ? 'manual' : null)
                         }}>
@@ -340,9 +389,13 @@ export default function Import() {
                         </select>
                       </td>
                       <td data-label="Kilde">
-                        {SOURCE_LABELS[r.source] && (
-                          <span className={`badge ${SOURCE_LABELS[r.source].badge}`}>{SOURCE_LABELS[r.source].label}</span>
-                        )}
+                        <div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}>
+                          {SOURCE_LABELS[r.source] && (
+                            <span className={`badge ${SOURCE_LABELS[r.source].badge}`}>{SOURCE_LABELS[r.source].label}</span>
+                          )}
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ minHeight: 28, padding: '0 8px' }}
+                            title="Vis parsede data" onClick={() => setDetailRow(r)}>👁</button>
+                        </div>
                       </td>
                     </tr>
                   ))}

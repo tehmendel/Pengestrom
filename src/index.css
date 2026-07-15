@@ -233,6 +233,23 @@ a {
 
 textarea.form-input { min-height: 80px; padding: var(--space-3); }
 
+/* Compact select for embedding inside dense table rows (import review,
+   transaction lists) — the full-size .form-select's 44px touch target is
+   right for a standalone form but wastes a lot of row height in a table. */
+.form-select-sm {
+  width: 100%;
+  min-height: 32px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  font-size: 13px;
+  transition: border-color 0.15s ease;
+  -webkit-appearance: none;
+}
+.form-select-sm:focus { outline: none; border-color: var(--accent); }
+
 /* ── Custom picker (dropdown with right-aligned meta per option) ─── */
 
 .select-pop { position: relative; }
@@ -394,7 +411,7 @@ th {
   border-bottom: 1px solid var(--border);
 }
 td {
-  padding: 9px var(--space-3);
+  padding: 6px var(--space-3);
   font-size: 13px;
   border-bottom: 1px solid var(--border);
 }

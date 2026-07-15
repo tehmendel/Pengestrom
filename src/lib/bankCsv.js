@@ -112,6 +112,7 @@ export function parseBankCsv(rawText) {
       notes: cell(cols, idxMessage),
       amount: isIncome ? inflow : Math.abs(outflow),
       type: isIncome ? 'inntekt' : 'utgift',
+      raw: lines[i],
     })
   }
 

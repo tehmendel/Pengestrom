@@ -115,7 +115,7 @@ function TransactionDetailModal({ tx, onClose }) {
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 440 }}>
         <div className="modal-title">Transaksjonsdetaljer</div>
-        <div className="stack" style={{ gap: 0 }}>
+        <div className="stack" style={{ gap: 0, marginBottom: tx.raw_source ? 'var(--space-4)' : 0 }}>
           {fields.map((f) => (
             <div key={f.label} className="row-between" style={{ padding: '7px 0', borderBottom: '1px solid var(--border)', gap: 'var(--space-3)' }}>
               <span className="text-muted" style={{ fontSize: 12, flexShrink: 0 }}>{f.label}</span>
@@ -123,6 +123,17 @@ function TransactionDetailModal({ tx, onClose }) {
             </div>
           ))}
         </div>
+        {tx.raw_source && (
+          <>
+            <div className="form-label">Rådata fra import</div>
+            <pre style={{
+              background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+              padding: 'var(--space-3)', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 220, overflowY: 'auto',
+            }}>
+              {tx.raw_source}
+            </pre>
+          </>
+        )}
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
           <button className="btn btn-ghost" onClick={onClose}>Lukk</button>
         </div>
@@ -452,7 +463,7 @@ export default function Transactions() {
                     <td data-label="Konto" className="text-muted">{t.accounts?.display_name}</td>
                     <td data-label="Eier" className="text-muted">{t.profiles?.full_name}</td>
                     <td data-label="Kategori">
-                      <select className="form-select" value={t.category_id || ''} onChange={(e) => changeCategory(t, e.target.value)}>
+                      <select className="form-select-sm" value={t.category_id || ''} onChange={(e) => changeCategory(t, e.target.value)}>
                         <option value="">Ingen kategori</option>
                         {categoryOptionsFor(t.type, t.category_id).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
