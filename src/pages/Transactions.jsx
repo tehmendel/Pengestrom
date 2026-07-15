@@ -104,6 +104,8 @@ function TransactionDetailModal({ tx, onClose }) {
     { label: 'Beskrivelse', value: tx.description },
     { label: 'Beløp', value: `${tx.type === 'utgift' ? '−' : '+'}${formatKr(tx.amount)}` },
     { label: 'Type', value: tx.type === 'inntekt' ? 'Inntekt' : 'Utgift' },
+    { label: 'Banktype', value: tx.bank_type || '—' },
+    { label: 'Undertype', value: tx.bank_subtype || '—' },
     { label: 'Kategori', value: tx.categories?.name || '—' },
     { label: 'Konto', value: tx.accounts?.display_name || '—' },
     { label: 'Eier', value: tx.profiles?.full_name || '—' },

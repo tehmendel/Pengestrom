@@ -74,6 +74,8 @@ export function parseBankCsv(rawText) {
   const idxAccount = headers.findIndex((h) => h === 'kontonummer' || (h.includes('konto') && !h.includes('inn') && !h.includes('ut')))
   const idxBalance = columnIndex('saldo')
   const idxMessage = columnIndex('melding/kid/fakt.nr')
+  const idxType = headers.findIndex((h) => h === 'type')
+  const idxSubtype = headers.findIndex((h) => h === 'undertype')
 
   if (idxIn < 0 || idxOut < 0 || idxDate < 0) {
     return { transactions: [], error: `Fant ikke forventede kolonner. Kolonner i filen: ${headers.join(' | ')}` }
@@ -106,13 +108,23 @@ export function parseBankCsv(rawText) {
       if (balance !== 0) lastBalance = balance
     }
 
+    const description = cell(cols, idxDesc) || cell(cols, idxMessage) || '(uten beskrivelse)'
+    const notes = cell(cols, idxMessage)
+    const csvType = cell(cols, idxType)
+    const csvSubtype = cell(cols, idxSubtype)
+
     transactions.push({
       date,
-      description: cell(cols, idxDesc) || cell(cols, idxMessage) || '(uten beskrivelse)',
-      notes: cell(cols, idxMessage),
+      description,
+      notes,
       amount: isIncome ? inflow : Math.abs(outflow),
       type: isIncome ? 'inntekt' : 'utgift',
       raw: lines[i],
+      csvType,
+      csvSubtype,
+      // Bredere matchtekst enn bare beskrivelsen — regler kan også treffe på
+      // bankens egen type/undertype (f.eks. "Overføring til egen konto").
+      matchText: [description, csvType, csvSubtype, notes].filter(Boolean).join(' '),
     })
   }
 

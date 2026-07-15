@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { readFileAsText, parseBankCsv } from '../lib/bankCsv'
-import { fetchActiveRules, matchAgainstRules, matchAgainstVendors, learnFromOutcome } from '../lib/categorize'
+import { fetchActiveRules, matchAgainstRules, matchAgainstVendors, learnFromOutcome, extractVendorKey } from '../lib/categorize'
 import { formatKr, formatDate } from '../lib/format'
+import CategoryPicker from '../components/CategoryPicker'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
@@ -29,19 +30,23 @@ function RowDetailModal({ row, categoryName, onClose }) {
     { label: 'Beskrivelse', value: row.description },
     { label: 'Beløp', value: `${row.type === 'utgift' ? '−' : '+'}${formatKr(row.amount)}` },
     { label: 'Type', value: row.type === 'inntekt' ? 'Inntekt' : 'Utgift' },
-    { label: 'Notater (parset)', value: row.notes || '—' },
+    { label: 'Banktype', value: row.csvType || '—' },
+    { label: 'Undertype', value: row.csvSubtype || '—' },
+    { label: 'Melding / KID / Faktura', value: row.notes || '—' },
+    { label: 'Søketekst (regelmatching)', value: row.matchText || row.description, mono: true },
     { label: 'Kategoriforslag', value: categoryName || '—' },
     { label: 'Kilde', value: SOURCE_LABELS[row.source]?.label || '—' },
+    { label: 'Status', value: row.duplicate ? 'Duplikat' : 'Ny' },
   ]
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 480 }}>
-        <div className="modal-title">Parsede data for raden</div>
+        <div className="modal-title">Transaksjonsdata</div>
         <div className="stack" style={{ gap: 0, marginBottom: 'var(--space-4)' }}>
           {fields.map((f) => (
             <div key={f.label} className="row-between" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', gap: 'var(--space-3)' }}>
               <span className="text-muted" style={{ fontSize: 12, flexShrink: 0 }}>{f.label}</span>
-              <span style={{ fontSize: 13, textAlign: 'right', wordBreak: 'break-word' }}>{f.value}</span>
+              <span className={f.mono ? 'text-mono' : ''} style={{ fontSize: f.mono ? 12 : 13, textAlign: 'right', wordBreak: 'break-word' }}>{f.value}</span>
             </div>
           ))}
         </div>
@@ -74,6 +79,7 @@ export default function Import() {
   const [done, setDone] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [detailRow, setDetailRow] = useState(null)
+  const [vendorSuggestions, setVendorSuggestions] = useState([])
   const fileHashRef = useRef(null)
   const fileNameRef = useRef(null)
   const sourceRef = useRef('csv')
@@ -93,6 +99,7 @@ export default function Import() {
     setError('')
     setStatus('Leser fil…')
     setRows([])
+    setVendorSuggestions([])
     setDone(0)
     setBusy(true)
 
@@ -144,7 +151,7 @@ export default function Import() {
 
       const withLocalMatch = []
       for (const [i, tx] of transactions.entries()) {
-        const ruleHit = matchAgainstRules(rules, tx.description, tx.type)
+        const ruleHit = matchAgainstRules(rules, tx.matchText || tx.description, tx.type)
         const vendorHit = ruleHit ? null : await matchAgainstVendors(household.id, tx.description)
         const aiCategoryId = aiPresuggested.get(i) || null
         const source = ruleHit ? 'rule' : vendorHit ? 'vendor' : aiCategoryId ? 'ai' : null
@@ -210,6 +217,24 @@ export default function Import() {
 
       setRows(finalRows)
       setStatus(`Klar til gjennomgang — ${finalRows.filter((r) => !r.duplicate).length} nye, ${finalRows.filter((r) => r.duplicate).length} duplikater avhuket`)
+
+      // Grupperer kategoriserte, ikke-duplikate rader per leverandør (samme
+      // nøkkel som leverandørlæringen ellers bruker) og foreslår å legge dem
+      // rett inn i leverandørregisteret — i stedet for å måtte vente på at
+      // læringsløpet bygger opp den samme historikken transaksjon for transaksjon.
+      const { data: knownVendors } = await supabase.from('vendors').select('normalized_name').eq('household_id', household.id)
+      const knownKeys = new Set((knownVendors || []).map((v) => v.normalized_name))
+      const vendorMap = new Map()
+      for (const t of finalRows) {
+        if (t.duplicate || !t.category_id) continue
+        const key = extractVendorKey(t.description)
+        if (key.length < 3 || knownKeys.has(key)) continue
+        if (!vendorMap.has(key)) vendorMap.set(key, { key, suggested_category_id: t.category_id, transaction_count: 0, total_amount: 0 })
+        const v = vendorMap.get(key)
+        v.transaction_count++
+        v.total_amount += Number(t.amount)
+      }
+      setVendorSuggestions([...vendorMap.values()].map((v, i) => ({ ...v, _id: i, include: v.transaction_count >= 2 })))
     } catch (err) {
       setError(err.message || 'Noe gikk galt under lesing av filen')
       setStatus('')
@@ -224,6 +249,10 @@ export default function Import() {
 
   function toggleAll(checked) {
     setRows((prev) => prev.map((r) => ({ ...r, selected: checked })))
+  }
+
+  function updateVendorSuggestion(id, field, value) {
+    setVendorSuggestions((prev) => prev.map((v) => (v._id === id ? { ...v, [field]: value } : v)))
   }
 
   function handleDragOver(e) {
@@ -269,14 +298,39 @@ export default function Import() {
       source: sourceRef.current,
       bank_import_id: importRow?.id || null,
       raw_source: r.raw || null,
+      bank_type: r.csvType || null,
+      bank_subtype: r.csvSubtype || null,
     }))
 
     const { error } = await supabase.from('transactions').insert(payload)
     if (error) { setImporting(false); setError(error.message); return }
 
+    // Leverandørforslag brukeren har krysset av legges rett inn i registeret —
+    // et "ignoreDuplicates"-upsert er en ekstra sikring mot race conditions,
+    // klientsiden har allerede filtrert bort kjente leverandører.
+    const vendorsToSave = vendorSuggestions.filter((v) => v.include && v.key.trim())
+    if (vendorsToSave.length > 0) {
+      await supabase.from('vendors').upsert(
+        vendorsToSave.map((v) => ({
+          household_id: household.id,
+          normalized_name: v.key.toLowerCase().trim(),
+          suggested_category_id: v.suggested_category_id || null,
+          transaction_count: v.transaction_count,
+          confidence: 0.7,
+          last_seen: new Date().toISOString().slice(0, 10),
+        })),
+        { onConflict: 'household_id,normalized_name', ignoreDuplicates: true }
+      )
+    }
+
     // Lær av hver rad: bekreftet forslag styrker leverandør-treffsikkerheten,
     // overstyrt forslag retter den — enten det kom fra regel, leverandørhistorikk eller AI.
-    await Promise.all(selected.map((r) => learnFromOutcome({
+    // Rader som akkurat ble dekket av et inkludert leverandørforslag hoppes over
+    // her — statistikken deres er allerede satt av bulk-upserten over, og en
+    // ekstra runde ville dobbelttalt transaction_count for hver av dem.
+    const savedVendorKeys = new Set(vendorsToSave.map((v) => v.key.toLowerCase().trim()))
+    const toLearnFrom = selected.filter((r) => !savedVendorKeys.has(extractVendorKey(r.description)))
+    await Promise.all(toLearnFrom.map((r) => learnFromOutcome({
       householdId: household.id,
       description: r.description,
       suggestedCategoryId: r.initial_category_id || null,
@@ -286,11 +340,13 @@ export default function Import() {
     setImporting(false)
     setDone(selected.length)
     setRows([])
+    setVendorSuggestions([])
     if (inputRef.current) inputRef.current.value = ''
   }
 
   const selectedCount = rows.filter((r) => r.selected).length
   const allSelected = rows.length > 0 && selectedCount === rows.length
+  const includedVendorCount = vendorSuggestions.filter((v) => v.include).length
 
   return (
     <div className="stack">
@@ -376,6 +432,12 @@ export default function Import() {
                       <td className="list-primary">
                         {r.description}
                         {r.duplicate && <span className="badge badge-yellow" style={{ marginLeft: 6 }}>duplikat</span>}
+                        {(r.csvType || r.csvSubtype) && (
+                          <div className="row" style={{ gap: 4, marginTop: 3, flexWrap: 'wrap' }}>
+                            {r.csvType && <span className="badge badge-neutral" style={{ fontSize: 10 }}>{r.csvType}</span>}
+                            {r.csvSubtype && <span className="badge badge-neutral" style={{ fontSize: 10 }}>{r.csvSubtype}</span>}
+                          </div>
+                        )}
                       </td>
                       <td data-label="Beløp" className="text-right">
                         <span className={r.type === 'inntekt' ? 'amount-positive' : 'amount-negative'}>{r.type === 'utgift' ? '−' : '+'}{formatKr(r.amount)}</span>
@@ -403,9 +465,60 @@ export default function Import() {
               </table>
             </div>
           </div>
-          <button className="btn btn-primary btn-block" disabled={importing || selectedCount === 0} onClick={commitImport}>
-            {importing ? 'Importerer…' : `Importer ${selectedCount} transaksjoner`}
-          </button>
+          {vendorSuggestions.length > 0 && (
+            <div className="stack" style={{ gap: 'var(--space-2)' }}>
+              <div className="row">
+                <span className="section-title" style={{ marginBottom: 0 }}>Nye leverandørforslag</span>
+                <span className="text-muted" style={{ fontSize: 12 }}>
+                  {includedVendorCount} av {vendorSuggestions.length} inkludert — legges til leverandørregisteret
+                </span>
+              </div>
+              <div className="card">
+                <div className="table-wrap">
+                  <table className="list-table">
+                    <thead>
+                      <tr>
+                        <th>
+                          <input type="checkbox" checked={vendorSuggestions.every((v) => v.include)}
+                            onChange={(e) => setVendorSuggestions((prev) => prev.map((v) => ({ ...v, include: e.target.checked })))} />
+                        </th>
+                        <th>Leverandørnavn</th>
+                        <th>Kategori</th>
+                        <th className="text-right">Transaksjoner</th>
+                        <th className="text-right">Totalt</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vendorSuggestions.map((v) => (
+                        <tr key={v._id} className="list-row" style={{ opacity: v.include ? 1 : 0.4 }}>
+                          <td data-label="Velg"><input type="checkbox" checked={v.include} onChange={(e) => updateVendorSuggestion(v._id, 'include', e.target.checked)} /></td>
+                          <td data-label="Leverandørnavn">
+                            <input className="form-input" style={{ minHeight: 32, fontSize: 13, padding: '0 var(--space-2)' }}
+                              value={v.key} onChange={(e) => updateVendorSuggestion(v._id, 'key', e.target.value)} />
+                          </td>
+                          <td data-label="Kategori" style={{ minWidth: 180 }}>
+                            <CategoryPicker categories={categories} value={v.suggested_category_id || ''}
+                              onChange={(id) => updateVendorSuggestion(v._id, 'suggested_category_id', id)} />
+                          </td>
+                          <td data-label="Transaksjoner" className="text-right text-mono">{v.transaction_count}</td>
+                          <td data-label="Totalt" className="text-right text-mono">{formatKr(v.total_amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="row">
+            <button className="btn btn-ghost grow" onClick={() => { setRows([]); setVendorSuggestions([]); setStatus(''); setDone(0); if (inputRef.current) inputRef.current.value = '' }}>
+              Avbryt
+            </button>
+            <button className="btn btn-primary grow" disabled={importing || selectedCount === 0} onClick={commitImport}>
+              {importing ? 'Importerer…' : `Importer ${selectedCount} transaksjoner${includedVendorCount > 0 ? ` + ${includedVendorCount} leverandører` : ''}`}
+            </button>
+          </div>
         </>
       )}
     </div>
