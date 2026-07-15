@@ -162,16 +162,37 @@ function AssetsCard() {
   )
 }
 
+const VISIBILITY_OPTIONS = [
+  { value: 'alle', label: 'Alle' },
+  { value: 'shared', label: 'Felles' },
+  { value: 'personal', label: 'Personlig' },
+]
+
+const SORT_OPTIONS = [
+  { value: 'created_desc', label: 'Nyeste først' },
+  { value: 'created_asc', label: 'Eldste først' },
+  { value: 'name_asc', label: 'Navn (A-Å)' },
+  { value: 'name_desc', label: 'Navn (Å-A)' },
+  { value: 'balance_desc', label: 'Saldo (høy-lav)' },
+  { value: 'balance_asc', label: 'Saldo (lav-høy)' },
+]
+
+const emptyAccountForm = { institution: '', account_type: 'checking', display_name: '', visibility: 'personal', balance: '' }
+
 export default function Accounts() {
   const { household, user } = useAuth()
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ institution: '', account_type: 'checking', display_name: '', visibility: 'personal' })
+  const [form, setForm] = useState(emptyAccountForm)
+  const [editingId, setEditingId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [editingBalanceId, setEditingBalanceId] = useState(null)
   const [balanceValue, setBalanceValue] = useState('')
   const [error, setError] = useState('')
+  const [filterType, setFilterType] = useState('alle')
+  const [filterVisibility, setFilterVisibility] = useState('alle')
+  const [sortBy, setSortBy] = useState('created_desc')
 
   async function load() {
     setLoading(true)
@@ -185,23 +206,49 @@ export default function Accounts() {
 
   useEffect(() => { load() }, [household?.id])
 
-  async function handleAdd(e) {
+  function startAdd() {
+    setForm(emptyAccountForm)
+    setEditingId(null)
+    setError('')
+    setShowForm(true)
+  }
+
+  function startEdit(a) {
+    setForm({
+      institution: a.institution,
+      account_type: a.account_type,
+      display_name: a.display_name,
+      visibility: a.visibility,
+      balance: a.balance != null ? String(a.balance) : '',
+    })
+    setEditingId(a.id)
+    setError('')
+    setShowForm(true)
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault()
+    if (!form.institution.trim() || !form.display_name.trim()) return
     setSaving(true)
     setError('')
-    const { error } = await supabase.from('accounts').insert({
-      household_id: household.id,
-      owner_id: user.id,
+
+    const payload = {
       institution: form.institution.trim(),
       account_type: form.account_type,
       display_name: form.display_name.trim(),
       visibility: form.visibility,
-      connection_type: 'manual',
-    })
+      balance: form.balance === '' ? null : Number(form.balance),
+    }
+
+    const { error } = editingId
+      ? await supabase.from('accounts').update(payload).eq('id', editingId)
+      : await supabase.from('accounts').insert({ ...payload, household_id: household.id, owner_id: user.id, connection_type: 'manual' })
+
     setSaving(false)
     if (error) { setError(error.message); return }
-    setForm({ institution: '', account_type: 'checking', display_name: '', visibility: 'personal' })
     setShowForm(false)
+    setForm(emptyAccountForm)
+    setEditingId(null)
     load()
   }
 
@@ -212,11 +259,46 @@ export default function Accounts() {
     load()
   }
 
+  async function removeAccount(account) {
+    setError('')
+    const [{ count: txCount }, { count: holdingCount }] = await Promise.all([
+      supabase.from('transactions').select('id', { count: 'exact', head: true }).eq('account_id', account.id),
+      supabase.from('holdings').select('id', { count: 'exact', head: true }).eq('account_id', account.id),
+    ])
+    const parts = []
+    if (txCount) parts.push(`${txCount} transaksjon${txCount === 1 ? '' : 'er'}`)
+    if (holdingCount) parts.push(`${holdingCount} beholdning${holdingCount === 1 ? '' : 'er'}`)
+    const message = parts.length
+      ? `Kontoen «${account.display_name}» har ${parts.join(' og ')} knyttet til seg. Sletter du kontoen, slettes disse også. Dette kan ikke angres. Fortsette?`
+      : `Fjerne kontoen «${account.display_name}»?`
+    if (!window.confirm(message)) return
+    const { error } = await supabase.from('accounts').delete().eq('id', account.id)
+    if (error) { setError(error.message); return }
+    load()
+  }
+
+  const filtered = accounts
+    .filter((a) => filterType === 'alle' || a.account_type === filterType)
+    .filter((a) => filterVisibility === 'alle' || a.visibility === filterVisibility)
+
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case 'name_asc': return a.display_name.localeCompare(b.display_name, 'nb')
+      case 'name_desc': return b.display_name.localeCompare(a.display_name, 'nb')
+      case 'balance_desc': return (Number(b.balance) || 0) - (Number(a.balance) || 0)
+      case 'balance_asc': return (Number(a.balance) || 0) - (Number(b.balance) || 0)
+      case 'created_asc': return a.created_at.localeCompare(b.created_at)
+      default: return b.created_at.localeCompare(a.created_at)
+    }
+  })
+
+  const totalBalance = filtered.reduce((sum, a) => sum + (Number(a.balance) || 0), 0)
+
   return (
     <div className="stack">
       <div className="page-header">
         <div className="page-title">Kontoer</div>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>
+        <button className="btn btn-primary btn-sm" onClick={showForm ? () => setShowForm(false) : startAdd}>
           {showForm ? 'Avbryt' : '+ Legg til'}
         </button>
       </div>
@@ -227,7 +309,7 @@ export default function Accounts() {
       </div>
 
       {showForm && (
-        <form onSubmit={handleAdd} className="card card-pad">
+        <form onSubmit={handleSubmit} className="card card-pad">
           <div className="form-group">
             <label className="form-label">Bank/leverandør</label>
             <input className="form-input" required placeholder="F.eks. Rogaland Sparebank" value={form.institution}
@@ -245,6 +327,11 @@ export default function Accounts() {
             </select>
           </div>
           <div className="form-group">
+            <label className="form-label">Saldo (kr)</label>
+            <input className="form-input" type="number" step="any" placeholder="Valgfritt" value={form.balance}
+              onChange={(e) => setForm({ ...form, balance: e.target.value })} />
+          </div>
+          <div className="form-group">
             <label className="form-label">Synlighet i husstanden</label>
             <select className="form-select" value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value })}>
               <option value="personal">Personlig (kun kategorisummer deles)</option>
@@ -252,8 +339,40 @@ export default function Accounts() {
             </select>
           </div>
           {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 'var(--space-3)' }}>{error}</div>}
-          <button className="btn btn-primary btn-block" type="submit" disabled={saving}>{saving ? 'Lagrer…' : 'Lagre konto'}</button>
+          <button className="btn btn-primary btn-block" type="submit" disabled={saving}>{saving ? 'Lagrer…' : editingId ? 'Lagre endringer' : 'Lagre konto'}</button>
         </form>
+      )}
+
+      {!loading && accounts.length > 0 && (
+        <div className="stack" style={{ gap: 'var(--space-2)' }}>
+          <div className="row flex-wrap">
+            <button className={`chip ${filterType === 'alle' ? 'active' : ''}`} onClick={() => setFilterType('alle')}>Alle typer</button>
+            {ACCOUNT_TYPES.map((t) => (
+              <button key={t.value} className={`chip ${filterType === t.value ? 'active' : ''}`} onClick={() => setFilterType(t.value)}>{t.label}</button>
+            ))}
+          </div>
+          <div className="row-between flex-wrap" style={{ gap: 'var(--space-2)' }}>
+            <div className="row flex-wrap">
+              {VISIBILITY_OPTIONS.map((v) => (
+                <button key={v.value} className={`chip ${filterVisibility === v.value ? 'active' : ''}`} onClick={() => setFilterVisibility(v.value)}>{v.label}</button>
+              ))}
+            </div>
+            <select className="form-select" style={{ width: 'auto' }} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              {SORT_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <div className="card card-pad">
+          <div className="row" style={{ marginBottom: 'var(--space-2)' }}>
+            <span className="icon-chip icon-chip-blue">🏦</span>
+            <span className="stat-label">Totalt (etter filter)</span>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 600 }}>{formatKr(totalBalance)}</div>
+          <div className="text-muted" style={{ fontSize: 12 }}>{filtered.length} konto{filtered.length === 1 ? '' : 'er'}</div>
+        </div>
       )}
 
       <div className="card">
@@ -264,6 +383,8 @@ export default function Accounts() {
             <div className="empty-state-icon">🏦</div>
             <div>Ingen kontoer lagt til ennå.</div>
           </div>
+        ) : sorted.length === 0 ? (
+          <div className="empty-state">Ingen kontoer matcher filteret.</div>
         ) : (
           <div className="table-wrap">
             <table className="list-table">
@@ -274,10 +395,11 @@ export default function Accounts() {
                   <th>Type</th>
                   <th className="text-right">Saldo</th>
                   <th>Synlighet</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
-                {accounts.map((a) => (
+                {sorted.map((a) => (
                   <tr key={a.id} className="list-row">
                     <td className="list-primary">{a.display_name}</td>
                     <td data-label="Bank" className="text-secondary">{a.institution}</td>
@@ -299,6 +421,12 @@ export default function Accounts() {
                       <span className={`badge ${a.visibility === 'shared' ? 'badge-accent' : 'badge-neutral'}`}>
                         {a.visibility === 'shared' ? 'Felles' : 'Personlig'}
                       </span>
+                    </td>
+                    <td data-label="">
+                      <div className="row">
+                        <button className="btn btn-ghost btn-sm" onClick={() => startEdit(a)}>Rediger</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => removeAccount(a)}>Slett</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
