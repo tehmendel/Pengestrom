@@ -114,6 +114,18 @@ export default function Layout() {
       </nav>
 
       <main className="app-main">
+        {groupActive && (
+          <nav className="mobile-subnav">
+            <NavLink to={transactionsGroup.to} end className={({ isActive }) => `chip${isActive ? ' active' : ''}`}>
+              {transactionsGroup.label}
+            </NavLink>
+            {transactionsGroup.children.map((c) => (
+              <NavLink key={c.to} to={c.to} className={({ isActive }) => `chip${isActive ? ' active' : ''}`}>
+                {c.label}
+              </NavLink>
+            ))}
+          </nav>
+        )}
         <div className="page">
           <Outlet />
         </div>

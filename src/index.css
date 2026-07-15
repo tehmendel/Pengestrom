@@ -596,6 +596,28 @@ tr:last-child td { border-bottom: none; }
 .tab-link.active { color: var(--accent); }
 .tab-link svg { width: 22px; height: 22px; }
 
+.mobile-subnav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: var(--space-3) var(--space-4);
+  background: rgba(19, 24, 38, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+.mobile-subnav::-webkit-scrollbar { display: none; }
+.mobile-subnav .chip { text-decoration: none; flex-shrink: 0; }
+
+@media (min-width: 768px) {
+  .mobile-subnav { display: none; }
+}
+
 .page-loading {
   display: flex;
   align-items: center;
