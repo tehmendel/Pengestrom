@@ -276,6 +276,7 @@ export default function Import() {
                     <th>Beskrivelse</th>
                     <th className="text-right">Beløp</th>
                     <th>Kategori</th>
+                    <th>Kilde</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -291,18 +292,18 @@ export default function Import() {
                         <span className={r.type === 'inntekt' ? 'amount-positive' : 'amount-negative'}>{r.type === 'utgift' ? '−' : '+'}{formatKr(r.amount)}</span>
                       </td>
                       <td data-label="Kategori">
-                        <div className="row" style={{ flexWrap: 'nowrap' }}>
-                          <select className="form-select" value={r.category_id || ''} onChange={(e) => {
-                            updateRow(r._id, 'category_id', e.target.value || null)
-                            updateRow(r._id, 'source', e.target.value ? 'manual' : null)
-                          }}>
-                            <option value="">Ingen</option>
-                            {categories.filter((c) => c.type === r.type).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
-                          {SOURCE_LABELS[r.source] && (
-                            <span className={`badge ${SOURCE_LABELS[r.source].badge}`} style={{ flexShrink: 0 }}>{SOURCE_LABELS[r.source].label}</span>
-                          )}
-                        </div>
+                        <select className="form-select" value={r.category_id || ''} onChange={(e) => {
+                          updateRow(r._id, 'category_id', e.target.value || null)
+                          updateRow(r._id, 'source', e.target.value ? 'manual' : null)
+                        }}>
+                          <option value="">Ingen</option>
+                          {categories.filter((c) => c.type === r.type).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </td>
+                      <td data-label="Kilde">
+                        {SOURCE_LABELS[r.source] && (
+                          <span className={`badge ${SOURCE_LABELS[r.source].badge}`}>{SOURCE_LABELS[r.source].label}</span>
+                        )}
                       </td>
                     </tr>
                   ))}
