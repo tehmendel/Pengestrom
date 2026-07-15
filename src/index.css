@@ -89,16 +89,16 @@ a {
 
 .page {
   padding: var(--space-4);
-  /* Grows with the window above ~1075px instead of staying pinned to a
-     fixed width, so wide desktop monitors aren't left with dead space —
-     stays at the 880px floor on anything narrower (tablet/mobile). */
-  max-width: clamp(880px, 82vw, 1680px);
-  margin: 0 auto;
+  /* Pulled flush against the sidebar rather than centered with margin:auto —
+     content starts right after the nav instead of floating in the middle
+     of the window with dead space on both sides. Still capped so a single
+     row of cards doesn't stretch absurdly wide on ultra-wide monitors. */
+  max-width: 1680px;
   width: 100%;
 }
 
 @media (min-width: 768px) {
-  .page { padding: var(--space-5) var(--space-6); }
+  .page { padding: var(--space-4) var(--space-5); }
 }
 
 .page-header {
@@ -387,15 +387,15 @@ textarea.form-input { min-height: 80px; padding: var(--space-3); }
 table { width: 100%; border-collapse: collapse; }
 th {
   text-align: left;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--muted);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 td {
-  padding: var(--space-3);
-  font-size: 14px;
+  padding: 9px var(--space-3);
+  font-size: 13px;
   border-bottom: 1px solid var(--border);
 }
 tr:last-child td { border-bottom: none; }
