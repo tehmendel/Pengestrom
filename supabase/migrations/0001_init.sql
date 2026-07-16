@@ -1,4 +1,4 @@
--- Økonomiportalen — grunnskjema
+-- Pengestrøm — grunnskjema
 -- Sikkerhetsprinsipp: RLS er på for alle tabeller. Kryssing av husstandsgrenser
 -- (husstand-kobling, invitasjoner, aggregerte kategorisummer) skjer KUN via
 -- SECURITY DEFINER-funksjoner som selv validerer medlemskap — aldri via

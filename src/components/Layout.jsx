@@ -2,6 +2,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import Avatar from './Avatar'
+import { Logo } from './Logo'
 import { HomeIcon, ListIcon, WalletIcon, UploadIcon, GearIcon, TagIcon, LogoutIcon, CoinsIcon, TrendingUpIcon, RepeatIcon, ReceiptIcon, StoreIcon, ChevronRightIcon } from './icons'
 import { APP_VERSION } from '../version'
 
@@ -56,6 +57,11 @@ export default function Layout() {
       )}
       <div className="app-shell">
       <nav className="sidebar">
+        <div className="row" style={{ marginBottom: 'var(--space-4)', padding: '0 var(--space-1)' }}>
+          <Logo size={28} />
+          <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-0.01em' }}>Pengestrøm</span>
+        </div>
+
         <div className="row" style={{ marginBottom: 'var(--space-5)', padding: '0 var(--space-1)' }}>
           <Avatar src={household?.avatarUrl} name={household?.name} size="avatar-sm" />
           <div style={{ minWidth: 0 }}>

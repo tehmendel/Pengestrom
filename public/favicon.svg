@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="pengestrom-bg" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a0e17"/>
+      <stop offset="1" stop-color="#3d63e0"/>
+    </linearGradient>
+    <linearGradient id="pengestrom-wave" x1="10" y1="72" x2="86" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f7df9"/>
+      <stop offset="1" stop-color="#f5f7fa"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="22" fill="url(#pengestrom-bg)"/>
+  <path d="M13,64 C27,42 37,80 51,56 C63,36 71,60 85,34" fill="none" stroke="url(#pengestrom-wave)" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="82" cy="28" r="14" fill="#22c55e"/>
+  <circle cx="82" cy="28" r="14" fill="none" stroke="#0a0e17" stroke-width="2" opacity="0.2"/>
+  <circle cx="82" cy="28" r="8.5" fill="none" stroke="#0a0e17" stroke-width="1.6" opacity="0.55"/>
+</svg>
