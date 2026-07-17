@@ -43,6 +43,13 @@ export default function Pension() {
   const [fetchingPrice, setFetchingPrice] = useState(false)
   const [fetchNote, setFetchNote] = useState('')
 
+  // For avtaler uten fondsbeholdning (NAV/SPK-type poengbasert pensjon har ingen
+  // andeler/kurs å regne verdi fra) — logger et rent kr-tall som snapshot direkte.
+  const [manualFormFor, setManualFormFor] = useState(null)
+  const [manualValue, setManualValue] = useState('')
+  const [savingManual, setSavingManual] = useState(false)
+  const [manualError, setManualError] = useState('')
+
   async function load() {
     setLoading(true)
     const [{ data: accs }, { data: hlds }] = await Promise.all([
@@ -153,6 +160,7 @@ export default function Pension() {
     setHoldingForm(emptyHoldingForm)
     setHoldingError('')
     setFetchNote('')
+    setManualFormFor(null)
     setHoldingFormFor(pensionAccountId)
   }
 
@@ -165,7 +173,31 @@ export default function Pension() {
     })
     setHoldingError('')
     setFetchNote('')
+    setManualFormFor(null)
     setHoldingFormFor(h.pension_account_id)
+  }
+
+  function startManualUpdate(pensionAccountId, currentValue) {
+    setManualValue(currentValue ? String(currentValue) : '')
+    setManualError('')
+    setHoldingFormFor(null)
+    setManualFormFor(pensionAccountId)
+  }
+
+  async function handleManualSubmit(e) {
+    e.preventDefault()
+    if (!manualFormFor) return
+    const num = Number(manualValue)
+    if (!Number.isFinite(num)) return
+    setSavingManual(true)
+    setManualError('')
+    const { error } = await supabase.from('pension_value_snapshots')
+      .upsert({ pension_account_id: manualFormFor, snapshot_date: new Date().toISOString().slice(0, 10), value: num }, { onConflict: 'pension_account_id,snapshot_date' })
+    setSavingManual(false)
+    if (error) { setManualError(error.message); return }
+    setManualFormFor(null)
+    setManualValue('')
+    load()
   }
 
   async function handleHoldingSubmit(e) {
@@ -424,8 +456,21 @@ export default function Pension() {
               )}
 
               <div className="card-pad" style={{ borderTop: '1px solid var(--border)' }}>
-                <div className="section-title">Fond</div>
-                {holdingFormFor === a.id ? (
+                <div className="section-title">Verdi</div>
+                {manualFormFor === a.id ? (
+                  <form onSubmit={handleManualSubmit}>
+                    <div className="form-group">
+                      <label className="form-label">Saldo</label>
+                      <input className="form-input" type="number" step="any" required autoFocus value={manualValue}
+                        onChange={(e) => setManualValue(e.target.value)} />
+                    </div>
+                    {manualError && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 'var(--space-3)' }}>{manualError}</div>}
+                    <div className="row">
+                      <button className="btn btn-primary btn-sm" type="submit" disabled={savingManual}>{savingManual ? 'Lagrer…' : 'Lagre'}</button>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setManualFormFor(null)}>Avbryt</button>
+                    </div>
+                  </form>
+                ) : holdingFormFor === a.id ? (
                   <form onSubmit={handleHoldingSubmit}>
                     <div className="form-group">
                       <label className="form-label">Fondsnavn</label>
@@ -473,7 +518,17 @@ export default function Pension() {
                     <button className="btn btn-ghost btn-sm" onClick={() => startEditHolding(holding)}>Oppdater kurs</button>
                   </div>
                 ) : (
-                  <button className="btn btn-sm" onClick={() => startAddHolding(a.id)}>+ Legg til fond</button>
+                  <div className="stack" style={{ gap: 'var(--space-2)' }}>
+                    {chartData.length > 0 && (
+                      <div className="text-muted" style={{ fontSize: 12 }}>Manuelt registrert saldo — sist oppdatert {formatDate(chartData[chartData.length - 1].date)}</div>
+                    )}
+                    <div className="row flex-wrap">
+                      <button className="btn btn-sm" onClick={() => startManualUpdate(a.id, value)}>
+                        {chartData.length > 0 ? 'Oppdater saldo' : 'Oppdater saldo manuelt'}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => startAddHolding(a.id)}>+ Legg til fond i stedet</button>
+                    </div>
+                  </div>
                 )}
               </div>
 
