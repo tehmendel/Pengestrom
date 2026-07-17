@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { formatKr, formatDate } from '../lib/format'
 import { INSTRUMENT_TYPES as TYPES } from '../lib/constants'
 
-const emptyForm = { account_id: '', instrument_name: '', instrument_type: 'fond', quantity: '', avg_price: '', current_price: '' }
+const emptyForm = { account_id: '', instrument_name: '', instrument_type: 'fond', isin: '', quantity: '', avg_price: '', current_price: '' }
 
 function gainPct(h) {
   const avg = Number(h.avg_price)
@@ -25,6 +25,10 @@ export default function Investments() {
   const [editingId, setEditingId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [fetchingPrice, setFetchingPrice] = useState(false)
+  const [fetchNote, setFetchNote] = useState('')
+  const [bulkUpdating, setBulkUpdating] = useState(false)
+  const [bulkResult, setBulkResult] = useState('')
 
   async function load() {
     setLoading(true)
@@ -56,6 +60,7 @@ export default function Investments() {
   function startAdd() {
     setForm(emptyForm)
     setEditingId(null)
+    setFetchNote('')
     setShowForm(true)
   }
 
@@ -64,12 +69,53 @@ export default function Investments() {
       account_id: h.account_id,
       instrument_name: h.instrument_name,
       instrument_type: h.instrument_type,
+      isin: h.isin || '',
       quantity: String(h.quantity),
       avg_price: String(h.avg_price),
       current_price: String(h.current_price),
     })
     setEditingId(h.id)
+    setFetchNote('')
     setShowForm(true)
+  }
+
+  async function fetchLatestPrice() {
+    if (!form.isin.trim()) { setError('Fyll inn ISIN først'); return }
+    setFetchingPrice(true)
+    setError('')
+    setFetchNote('')
+    const { data, error } = await supabase.functions.invoke('fetch-storebrand-fund-price', { body: { isin: form.isin.trim() } })
+    setFetchingPrice(false)
+    if (error || data?.error) {
+      setError(`Kunne ikke hente kurs automatisk (${data?.error || error.message}) — fyll inn manuelt.`)
+      return
+    }
+    setForm((f) => ({ ...f, current_price: String(data.price) }))
+    setFetchNote(`Hentet ${formatKr(data.price)} (kursdato ${formatDate(data.priceDate)}).`)
+  }
+
+  async function bulkUpdatePrices() {
+    const targets = holdings.filter((h) => h.instrument_type === 'fond' && h.isin)
+    if (targets.length === 0) { setBulkResult('Ingen fond med registrert ISIN å oppdatere.'); return }
+    setBulkUpdating(true)
+    setBulkResult('')
+    let okCount = 0
+    const failed = []
+    const today = new Date().toISOString().slice(0, 10)
+    for (const h of targets) {
+      const { data, error } = await supabase.functions.invoke('fetch-storebrand-fund-price', { body: { isin: h.isin } })
+      if (error || data?.error) {
+        failed.push(h.instrument_name)
+        continue
+      }
+      await supabase.from('holdings').update({ current_price: data.price, updated_at: new Date().toISOString() }).eq('id', h.id)
+      await supabase.from('holding_price_snapshots')
+        .upsert({ holding_id: h.id, snapshot_date: today, price: data.price }, { onConflict: 'holding_id,snapshot_date' })
+      okCount++
+    }
+    setBulkUpdating(false)
+    setBulkResult(`Oppdaterte ${okCount} av ${targets.length} fond.${failed.length ? ' Feilet: ' + failed.join(', ') : ''}`)
+    load()
   }
 
   async function handleSubmit(e) {
@@ -82,6 +128,7 @@ export default function Investments() {
       account_id: form.account_id,
       instrument_name: form.instrument_name.trim(),
       instrument_type: form.instrument_type,
+      isin: form.isin.trim() || null,
       quantity: Number(form.quantity) || 0,
       avg_price: Number(form.avg_price) || 0,
       current_price: Number(form.current_price) || 0,
@@ -143,9 +190,22 @@ export default function Investments() {
     <div className="stack">
       <div className="page-header">
         <div className="page-title">Investeringer</div>
-        <button className="btn btn-primary btn-sm" onClick={showForm ? () => setShowForm(false) : startAdd}>
-          {showForm ? 'Avbryt' : '+ Legg til'}
-        </button>
+        <div className="row">
+          <button className="btn btn-sm" disabled={bulkUpdating} onClick={bulkUpdatePrices}>
+            {bulkUpdating ? 'Oppdaterer…' : '↻ Oppdater fondskurser'}
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={showForm ? () => setShowForm(false) : startAdd}>
+            {showForm ? 'Avbryt' : '+ Legg til'}
+          </button>
+        </div>
+      </div>
+
+      {bulkResult && (
+        <div className="card card-pad" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{bulkResult}</div>
+      )}
+
+      <div className="text-muted" style={{ fontSize: 11, marginTop: -8 }}>
+        Automatisk oppdatering av fondskurser kjører også hver natt for fond med registrert ISIN — knappen henter en fersk kurs med en gang.
       </div>
 
       {accounts.length === 0 && !showForm && (
@@ -168,11 +228,17 @@ export default function Investments() {
             <input className="form-input" required placeholder="F.eks. DNB Global Indeks" value={form.instrument_name}
               onChange={(e) => setForm({ ...form, instrument_name: e.target.value })} />
           </div>
-          <div className="form-group">
-            <label className="form-label">Type</label>
-            <select className="form-select" value={form.instrument_type} onChange={(e) => setForm({ ...form, instrument_type: e.target.value })}>
-              {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
+          <div className="row">
+            <div className="form-group grow">
+              <label className="form-label">Type</label>
+              <select className="form-select" value={form.instrument_type} onChange={(e) => setForm({ ...form, instrument_type: e.target.value })}>
+                {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div className="form-group grow">
+              <label className="form-label">ISIN</label>
+              <input className="form-input" placeholder="F.eks. XL8000000918" value={form.isin} onChange={(e) => setForm({ ...form, isin: e.target.value })} />
+            </div>
           </div>
           <div className="row">
             <div className="form-group grow">
@@ -188,6 +254,15 @@ export default function Investments() {
               <input className="form-input" type="number" step="any" value={form.current_price} onChange={(e) => setForm({ ...form, current_price: e.target.value })} />
             </div>
           </div>
+          {form.instrument_type === 'fond' && (
+            <div className="row" style={{ marginBottom: 'var(--space-3)', alignItems: 'center' }}>
+              <button type="button" className="btn btn-sm" disabled={fetchingPrice} onClick={fetchLatestPrice}>
+                {fetchingPrice ? 'Henter…' : '↻ Hent siste kurs'}
+              </button>
+              <span className="text-muted" style={{ fontSize: 11 }}>Best-effort fra Storebrands åpne fonddata — kan slutte å virke, sjekk alltid tallet.</span>
+            </div>
+          )}
+          {fetchNote && <div style={{ fontSize: 12, color: 'var(--green)', marginBottom: 'var(--space-3)' }}>{fetchNote}</div>}
           {error && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 'var(--space-3)' }}>{error}</div>}
           <button className="btn btn-primary btn-block" type="submit" disabled={saving}>{saving ? 'Lagrer…' : 'Lagre'}</button>
         </form>

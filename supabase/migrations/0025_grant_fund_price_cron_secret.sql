@@ -1,0 +1,10 @@
+-- Oppretter den delte hemmeligheten som pg_cron-jobben (migrasjon 0026) og
+-- edge-funksjonen refresh-fund-prices bruker til å autentisere hverandre.
+--
+-- Bevisst IKKE en kjørbar insert i denne filen: dette repoet er offentlig, og
+-- en hemmelighet hører ikke hjemme i kildekoden — den skal kun finnes i Vault.
+-- Opprettes/roteres alltid manuelt via SQL/dashboard, aldri via appen selv og
+-- aldri committet her. Samme mønster som 0017_grant_initial_platform_admin.sql.
+--
+-- Mønster (kjør manuelt, med en faktisk tilfeldig generert verdi):
+--   select vault.create_secret('<tilfeldig-generert-verdi>', 'fund_price_cron_secret', 'Delt hemmelighet for refresh-fund-prices-nightly.');
