@@ -1,12 +1,13 @@
 // Natt-jobb: oppdaterer kurs på ALLE fond/pensjonsfond (på tvers av husstander)
-// som har registrert ISIN. Trigges av pg_cron via net.http_post, se migrasjonen
-// 'schedule_fund_price_refresh'. Bruker service-rollen bevisst for å kunne
-// skrive på tvers av husstander — RLS omgås her med hensikt, autentisering skjer
-// i stedet via en delt hemmelighet lagret i Supabase Vault (ikke en bruker-JWT,
-// og aldri hardkodet i kildekoden siden repoet er offentlig).
+// som har registrert ISIN eller kilde-URL. Trigges av pg_cron via net.http_post,
+// se migrasjonen 'schedule_fund_price_refresh'. Bruker service-rollen bevisst
+// for å kunne skrive på tvers av husstander — RLS omgås her med hensikt,
+// autentisering skjer i stedet via en delt hemmelighet lagret i Supabase Vault
+// (ikke en bruker-JWT, og aldri hardkodet i kildekoden siden repoet er offentlig).
 //
-// Best-effort mot Storebrands åpne, men udokumenterte fund-data-API (samme som
-// fetch-storebrand-fund-price) — enkeltfond som feiler stopper ikke resten.
+// Samme to-trinns oppslag som fetch-fund-price: Storebrands åpne fund-data-API
+// via ISIN først, deretter kilde-URL-skraping (f.eks. Nordnets fondsider) som
+// fallback. Begge veier er best-effort — enkeltfond som feiler stopper ikke resten.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -15,7 +16,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-async function fetchFundPrice(isin: string): Promise<{ price: number; priceDate: string }> {
+async function fetchStorebrandPrice(isin: string): Promise<{ price: number; priceDate: string }> {
   const docUrl = `https://api.fund.storebrand.no/open/funddata/document?documentType=FUND_PROFILE&isin=${encodeURIComponent(isin)}&languageCode=no&market=NOR`
   const pdfResponse = await fetch(docUrl)
   if (!pdfResponse.ok) throw new Error(`Storebrand svarte med status ${pdfResponse.status}`)
@@ -26,12 +27,68 @@ async function fetchFundPrice(isin: string): Promise<{ price: number; priceDate:
   const text = parsed.text.replace(/\s+/g, ' ')
 
   const match = text.match(/NAV\s*\/?\s*Kurs\s*\(?(\d{2}\.\d{2}\.\d{4})\)?\s*NOK\s*([\d\s.,]+)/i)
-  if (!match) throw new Error('Fant ikke kurs i dokumentet')
+  if (!match) throw new Error('Fant ikke kurs i Storebrand-dokumentet')
 
   const priceDate = match[1].split('.').reverse().join('-')
   const price = parseFloat(match[2].trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.'))
-  if (!Number.isFinite(price) || price <= 0) throw new Error('Kunne ikke tolke kursverdien')
+  if (!Number.isFinite(price) || price <= 0) throw new Error('Kunne ikke tolke kursverdien fra Storebrand')
   return { price, priceDate }
+}
+
+const NORWEGIAN_MONTHS: Record<string, number> = {
+  januar: 1, februar: 2, mars: 3, april: 4, mai: 5, juni: 6,
+  juli: 7, august: 8, september: 9, oktober: 10, november: 11, desember: 12,
+}
+
+function parseNorwegianShortDate(text: string): string {
+  const m = text.trim().match(/(\d{1,2})\.\s*([a-zæøå]+)/i)
+  if (!m) throw new Error('Klarte ikke å tolke datoen fra siden')
+  const day = parseInt(m[1], 10)
+  const month = NORWEGIAN_MONTHS[m[2].toLowerCase()]
+  if (!month) throw new Error('Ukjent månedsnavn i datoen fra siden')
+  const now = new Date()
+  let year = now.getFullYear()
+  const candidate = new Date(Date.UTC(year, month - 1, day))
+  if (candidate.getTime() > now.getTime() + 24 * 60 * 60 * 1000) year -= 1
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+async function fetchScrapedPrice(sourceUrl: string): Promise<{ price: number; priceDate: string }> {
+  const pageResponse = await fetch(sourceUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+  if (!pageResponse.ok) throw new Error(`Kilde-URL svarte med status ${pageResponse.status}`)
+  const html = await pageResponse.text()
+  const text = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+
+  const match = text.match(/Siste NAV-kurs\s*\(([^)]+)\)\s*([\d.,]+)\s*NOK/i)
+  if (!match) throw new Error('Fant ikke kurs på kilde-siden (forventer Nordnet-fondside-format)')
+
+  const priceDate = parseNorwegianShortDate(match[1])
+  const price = parseFloat(match[2].trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.'))
+  if (!Number.isFinite(price) || price <= 0) throw new Error('Kunne ikke tolke kursverdien fra kilde-siden')
+  return { price, priceDate }
+}
+
+async function fetchFundPrice(isin: string | null, sourceUrl: string | null): Promise<{ price: number; priceDate: string }> {
+  const errors: string[] = []
+
+  if (isin) {
+    try {
+      return await fetchStorebrandPrice(isin)
+    } catch (err) {
+      errors.push(`Storebrand: ${err instanceof Error ? err.message : 'ukjent feil'}`)
+    }
+  }
+
+  if (sourceUrl) {
+    try {
+      return await fetchScrapedPrice(sourceUrl)
+    } catch (err) {
+      errors.push(`Kilde-URL: ${err instanceof Error ? err.message : 'ukjent feil'}`)
+    }
+  }
+
+  if (errors.length === 0) throw new Error('Ingen ISIN eller kilde-URL registrert')
+  throw new Error(errors.join(' | '))
 }
 
 Deno.serve(async (req) => {
@@ -53,9 +110,9 @@ Deno.serve(async (req) => {
 
     const { data: holdings, error: fetchErr } = await supabase
       .from('holdings')
-      .select('id, isin, instrument_name, quantity, pension_account_id, household_id')
+      .select('id, isin, source_url, instrument_name, quantity, pension_account_id, household_id')
       .in('instrument_type', ['fond', 'pensjonsfond'])
-      .not('isin', 'is', null)
+      .or('isin.not.is.null,source_url.not.is.null')
 
     if (fetchErr) throw fetchErr
 
@@ -65,7 +122,7 @@ Deno.serve(async (req) => {
 
     for (const h of holdings ?? []) {
       try {
-        const { price } = await fetchFundPrice(h.isin as string)
+        const { price } = await fetchFundPrice((h.isin as string) || null, (h.source_url as string) || null)
         await supabase.from('holdings').update({ current_price: price, updated_at: new Date().toISOString() }).eq('id', h.id)
         await supabase.from('holding_price_snapshots')
           .upsert({ holding_id: h.id, snapshot_date: today, price }, { onConflict: 'holding_id,snapshot_date' })
@@ -76,7 +133,7 @@ Deno.serve(async (req) => {
         updated++
       } catch (err) {
         failed.push({
-          isin: h.isin as string,
+          isin: (h.isin as string) || '',
           name: h.instrument_name as string,
           error: err instanceof Error ? err.message : 'Ukjent feil',
           household_id: h.household_id as string,

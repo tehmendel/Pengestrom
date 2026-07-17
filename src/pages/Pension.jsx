@@ -241,7 +241,7 @@ export default function Pension() {
     setFetchingPrice(true)
     setHoldingError('')
     setFetchNote('')
-    const { data, error } = await supabase.functions.invoke('fetch-storebrand-fund-price', { body: { isin: holdingForm.isin.trim() } })
+    const { data, error } = await supabase.functions.invoke('fetch-fund-price', { body: { isin: holdingForm.isin.trim() } })
     setFetchingPrice(false)
     if (error || data?.error) {
       setHoldingError(`Kunne ikke hente kurs automatisk (${data?.error || error.message}) — fyll inn manuelt.`)
