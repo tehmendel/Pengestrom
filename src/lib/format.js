@@ -17,3 +17,12 @@ export function formatDate(isoDate) {
   const month = String(d.getMonth() + 1).padStart(2, '0')
   return `${day}.${month}.${d.getFullYear()}`
 }
+
+// Som formatDate, men med klokkeslett — brukt der flere hendelser samme dag
+// må skilles fra hverandre (f.eks. varsler).
+export function formatDateTime(isoTimestamp) {
+  const d = new Date(isoTimestamp)
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${formatDate(isoTimestamp)} ${hours}:${minutes}`
+}

@@ -45,3 +45,6 @@ export const ChevronRightIcon = (p) => (
 export const ShieldIcon = (p) => (
   <svg viewBox="0 0 24 24" {...base} {...p}><path d="M12 3 5 6v5.5C5 16 8 19.5 12 21c4-1.5 7-5 7-9.5V6l-7-3Z" /><path d="M9 12l2 2 4-4" /></svg>
 )
+export const BellIcon = (p) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M6 10.5a6 6 0 0 1 12 0c0 3.5 1 5 2 6H4c1-1 2-2.5 2-6Z" /><path d="M10 19a2 2 0 0 0 4 0" /></svg>
+)

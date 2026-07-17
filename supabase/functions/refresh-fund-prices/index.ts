@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
 
     const { data: holdings, error: fetchErr } = await supabase
       .from('holdings')
-      .select('id, isin, quantity, pension_account_id')
+      .select('id, isin, instrument_name, quantity, pension_account_id, household_id')
       .in('instrument_type', ['fond', 'pensjonsfond'])
       .not('isin', 'is', null)
 
@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
 
     const today = new Date().toISOString().slice(0, 10)
     let updated = 0
-    const failed: { isin: string; error: string }[] = []
+    const failed: { isin: string; name: string; error: string; household_id: string }[] = []
 
     for (const h of holdings ?? []) {
       try {
@@ -75,8 +75,30 @@ Deno.serve(async (req) => {
         }
         updated++
       } catch (err) {
-        failed.push({ isin: h.isin as string, error: err instanceof Error ? err.message : 'Ukjent feil' })
+        failed.push({
+          isin: h.isin as string,
+          name: h.instrument_name as string,
+          error: err instanceof Error ? err.message : 'Ukjent feil',
+          household_id: h.household_id as string,
+        })
       }
+    }
+
+    // Ett varsel per husstand som fikk minst én feilet oppdatering — synlig via
+    // bjellen neste gang noen i husstanden logger på, ikke bare i denne responsen.
+    const byHousehold = new Map<string, { name: string; isin: string; error: string }[]>()
+    for (const f of failed) {
+      const list = byHousehold.get(f.household_id) || []
+      list.push({ name: f.name, isin: f.isin, error: f.error })
+      byHousehold.set(f.household_id, list)
+    }
+    for (const [householdId, items] of byHousehold) {
+      await supabase.from('notifications').insert({
+        household_id: householdId,
+        source: 'cron',
+        title: `Nattlig kursoppdatering feilet for ${items.length} fond`,
+        detail: { items },
+      })
     }
 
     return new Response(

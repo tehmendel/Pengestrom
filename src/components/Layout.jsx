@@ -2,6 +2,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import Avatar from './Avatar'
+import NotificationBell from './NotificationBell'
 import { Logo } from './Logo'
 import { HomeIcon, ListIcon, WalletIcon, UploadIcon, GearIcon, TagIcon, LogoutIcon, CoinsIcon, TrendingUpIcon, RepeatIcon, ReceiptIcon, StoreIcon, ChevronRightIcon, ShieldIcon } from './icons'
 import { APP_VERSION } from '../version'
@@ -113,11 +114,14 @@ export default function Layout() {
         ))}
 
         <div style={{ marginTop: 'auto', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--border)' }}>
-          <div className="row" style={{ padding: '0 var(--space-1)', marginBottom: 'var(--space-2)' }}>
-            <Avatar name={profile?.full_name} size="avatar-sm" />
-            <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {profile?.full_name}
+          <div className="row-between" style={{ padding: '0 var(--space-1)', marginBottom: 'var(--space-2)' }}>
+            <div className="row" style={{ minWidth: 0 }}>
+              <Avatar name={profile?.full_name} size="avatar-sm" />
+              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {profile?.full_name}
+              </div>
             </div>
+            <NotificationBell />
           </div>
           {!impersonating && (
             <button className="btn btn-ghost btn-block" onClick={signOut}>

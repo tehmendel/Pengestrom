@@ -105,7 +105,7 @@ export default function Investments() {
     for (const h of targets) {
       const { data, error } = await supabase.functions.invoke('fetch-storebrand-fund-price', { body: { isin: h.isin } })
       if (error || data?.error) {
-        failed.push(h.instrument_name)
+        failed.push({ name: h.instrument_name, isin: h.isin, error: data?.error || error.message })
         continue
       }
       await supabase.from('holdings').update({ current_price: data.price, updated_at: new Date().toISOString() }).eq('id', h.id)
@@ -114,7 +114,15 @@ export default function Investments() {
       okCount++
     }
     setBulkUpdating(false)
-    setBulkResult(`Oppdaterte ${okCount} av ${targets.length} fond.${failed.length ? ' Feilet: ' + failed.join(', ') : ''}`)
+    setBulkResult(`Oppdaterte ${okCount} av ${targets.length} fond.${failed.length ? ' Feilet: ' + failed.map((f) => f.name).join(', ') : ''}`)
+    if (failed.length > 0) {
+      await supabase.from('notifications').insert({
+        household_id: household.id,
+        source: 'manual',
+        title: `Kursoppdatering feilet for ${failed.length} fond`,
+        detail: { items: failed },
+      })
+    }
     load()
   }
 
