@@ -30,7 +30,9 @@ export default function Investments() {
     setLoading(true)
     const [{ data: accs }, { data: hlds }] = await Promise.all([
       supabase.from('accounts').select('*').eq('account_type', 'investment'),
-      supabase.from('holdings').select('*, accounts(display_name)').order('created_at', { ascending: true }),
+      // Kun beholdninger knyttet til en investeringskonto — pensjonsfond (knyttet
+      // til en pensjonskonto, account_id null) hører til på Pensjon-siden.
+      supabase.from('holdings').select('*, accounts(display_name)').not('account_id', 'is', null).order('created_at', { ascending: true }),
     ])
     setAccounts(accs || [])
     setHoldings(hlds || [])

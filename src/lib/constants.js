@@ -37,7 +37,9 @@ export const WEALTH_CATEGORY_LABELS = {
 // på den dedikerte Pensjon-siden i stedet.
 export const WEALTH_POSITIVE_CATEGORIES = ['bank', 'investment', 'property', 'vehicle', 'other_asset']
 
-// Mirrors holdings.instrument_type CHECK constraint.
+// Mirrors holdings.instrument_type CHECK constraint. 'pensjonsfond' er kun
+// brukt av Pension.jsx (fond tilknyttet en pensjonskonto, ikke en vanlig
+// investeringskonto) — vises ikke som filtervalg på Investeringer-siden.
 export const INSTRUMENT_TYPES = [
   { value: 'fond', label: 'Fond' },
   { value: 'aksje', label: 'Aksje' },
@@ -45,6 +47,8 @@ export const INSTRUMENT_TYPES = [
   { value: 'obligasjon', label: 'Obligasjon' },
   { value: 'krypto', label: 'Krypto' },
 ]
+
+export const PENSION_INSTRUMENT_TYPE = 'pensjonsfond'
 
 // ── Vendor-learning thresholds ────────────────────────────────────────────
 // (categorize.js, vendorRecurrence.js, Vendors.jsx, Import.jsx, MergeVendorModal.jsx)

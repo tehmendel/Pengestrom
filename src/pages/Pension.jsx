@@ -3,6 +3,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
 import { formatKr, formatDate } from '../lib/format'
+import { PENSION_INSTRUMENT_TYPE } from '../lib/constants'
 
 const emptyAccountForm = {
   provider: 'Storebrand', display_name: '', agreement_number: '', employer: '',
@@ -209,7 +210,7 @@ export default function Pension() {
     const existing = holdings.find((h) => h.pension_account_id === holdingFormFor)
     const payload = {
       instrument_name: holdingForm.instrument_name.trim(),
-      instrument_type: 'fond',
+      instrument_type: PENSION_INSTRUMENT_TYPE,
       isin: holdingForm.isin.trim() || null,
       quantity: Number(holdingForm.quantity) || 0,
       avg_price: Number(holdingForm.current_price) || 0,
