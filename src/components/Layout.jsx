@@ -4,12 +4,13 @@ import { useAuth } from '../context/AuthContext'
 import Avatar from './Avatar'
 import NotificationBell from './NotificationBell'
 import { Logo } from './Logo'
-import { HomeIcon, ListIcon, WalletIcon, UploadIcon, GearIcon, TagIcon, LogoutIcon, CoinsIcon, TrendingUpIcon, RepeatIcon, ReceiptIcon, StoreIcon, ChevronRightIcon, ShieldIcon } from './icons'
+import { HomeIcon, ListIcon, WalletIcon, UploadIcon, GearIcon, TagIcon, LogoutIcon, CoinsIcon, TrendingUpIcon, RepeatIcon, ReceiptIcon, StoreIcon, ChevronRightIcon, ShieldIcon, LoanIcon } from './icons'
 import { APP_VERSION } from '../version'
 
 const topLinks = [
   { to: '/', label: 'Oversikt', end: true, Icon: HomeIcon },
   { to: '/formue', label: 'Formue', Icon: CoinsIcon },
+  { to: '/lan', label: 'Lån', Icon: LoanIcon },
   { to: '/investeringer', label: 'Investeringer', Icon: TrendingUpIcon },
   { to: '/pensjon', label: 'Pensjon', Icon: ShieldIcon },
   { to: '/skatt', label: 'Skatt', Icon: ReceiptIcon },

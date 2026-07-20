@@ -15,6 +15,7 @@ import Settings from './pages/Settings'
 import Wealth from './pages/Wealth'
 import Investments from './pages/Investments'
 import Pension from './pages/Pension'
+import Loans from './pages/Loans'
 import RecurringExpenses from './pages/RecurringExpenses'
 import Tax from './pages/Tax'
 
@@ -91,6 +92,7 @@ function AppRoutes() {
         <Route path="formue" element={<Wealth />} />
         <Route path="investeringer" element={<Investments />} />
         <Route path="pensjon" element={<Pension />} />
+        <Route path="lan" element={<Loans />} />
         <Route path="faste-utgifter" element={<RecurringExpenses />} />
         <Route path="skatt" element={<Tax />} />
         <Route path="innstillinger" element={<Settings />} />

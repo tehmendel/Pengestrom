@@ -12,6 +12,7 @@ const RED = '#ef4444'
 
 const QUICK_LINKS = [
   { to: '/formue', label: 'Formue', icon: '💰' },
+  { to: '/lan', label: 'Lån', icon: '🏦' },
   { to: '/investeringer', label: 'Investeringer', icon: '📈' },
   { to: '/pensjon', label: 'Pensjon', icon: '🛡️' },
   { to: '/faste-utgifter', label: 'Faste utgifter', icon: '🔁' },

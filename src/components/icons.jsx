@@ -48,3 +48,6 @@ export const ShieldIcon = (p) => (
 export const BellIcon = (p) => (
   <svg viewBox="0 0 24 24" {...base} {...p}><path d="M6 10.5a6 6 0 0 1 12 0c0 3.5 1 5 2 6H4c1-1 2-2.5 2-6Z" /><path d="M10 19a2 2 0 0 0 4 0" /></svg>
 )
+export const LoanIcon = (p) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M3 10 12 4l9 6" /><path d="M4.5 10v9M9 10v9M15 10v9M19.5 10v9" /><path d="M3 19h18" /></svg>
+)
